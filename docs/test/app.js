@@ -1,4 +1,4 @@
-/* Premium Laundry - PWA client (v0.3.0)
+/* Premium Laundry - PWA client (v0.4.0 TEST: voice entry)
  * - Two separate environments: TEST (practice ledger, /test/) and LIVE (official ledger, root).
  *   The environment shown comes from the SERVER (its LEDGER_MODE); if it does not match this
  *   app's configured environment, the app refuses to work.
@@ -165,6 +165,7 @@
     if (page === "payment") { setTab("home"); return renderPayment(arg); }
     if (page === "expense") { setTab("home"); return renderExpense(); }
     if (page === "more") { setTab("more"); return renderMore(); }
+    if (page === "voice") { setTab("home"); return renderVoice(); }
     renderHome();
   }
   window.addEventListener("hashchange", () => { if (state.me) route(location.hash.slice(1) || "home"); });
@@ -184,6 +185,7 @@
     return [t, t, "Today"];
   }
   const ACTIONS_HTML = `<div class="actions">
+        <button class="big voice" data-nav="voice">🎤 Speak a transaction<small>Say it, check it, then save</small></button>
         <button class="big" data-nav="charge">Customer brings clothes<small>Record the bill (and any money paid now)</small></button>
         <button class="big alt" data-nav="payment">Customer pays<small>Record money received</small></button>
         <button class="big exp" data-nav="expense">Business expense<small>Record money spent</small></button>
@@ -284,6 +286,7 @@
       <label for="o">Other spellings (optional)</label><input id="o" maxlength="200"><div class="hint">e.g. Jibril, Jibriil</div>
       <div id="err"></div><button class="btn" id="save" style="width:100%;margin-top:16px">Save customer</button></section>`;
     let confirmed = false;
+    applyPrefill("customer", pf => { setVal("#n", pf.spokenName); });
     $("#save").onclick = async () => {
       const name = $("#n").value.trim(); if (name.length < 2) return showErr("Please enter the customer's name.");
       const btn = $("#save"); btn.disabled = true;
@@ -320,7 +323,7 @@
   }
   async function renderCharge(custId) {
     view.innerHTML = `<h1>Customer brings clothes</h1><section class="card"><p>Loading…</p></section>`;
-    view.innerHTML = `<h1>Customer brings clothes</h1><section class="card">
+    view.innerHTML = `<h1>Customer brings clothes</h1>${SPEAK_LINK}<section class="card">
       <label for="d">Date</label><input type="date" id="d" value="${today()}" max="${today()}">
       ${await customerSelect(custId)}
       <label for="desc">Clothes / items</label><input id="desc" placeholder="e.g. 5 shirts, 2 trousers" maxlength="300">
@@ -333,6 +336,7 @@
     const upd = () => { const a = Number($("#amt").value || 0), p = Number($("#paid").value || 0);
       $("#methodBox").classList.toggle("hidden", !(p > 0)); $("#remain").textContent = a ? "Remaining to pay for this order: " + money(Math.max(a - p, 0)) : ""; };
     $("#amt").oninput = upd; $("#paid").oninput = upd;
+    applyPrefill("charge", pf => { setVal("#amt", pf.amount); setVal("#paid", pf.paidNow || 0); setVal("#pm", pf.method); setVal("#desc", pf.description); upd(); });
     $("#next").onclick = () => {
       const c = state.customers.find(x => x.id === $("#cust").value), a = Number($("#amt").value), p = Number($("#paid").value || 0);
       if (!$("#d").value) return showErr("Please choose the date.");
@@ -351,7 +355,7 @@
   }
   async function renderPayment(custId) {
     view.innerHTML = `<h1>Customer pays</h1><section class="card"><p>Loading…</p></section>`;
-    view.innerHTML = `<h1>Customer pays</h1><section class="card">
+    view.innerHTML = `<h1>Customer pays</h1>${SPEAK_LINK}<section class="card">
       <label for="d">Date</label><input type="date" id="d" value="${today()}" max="${today()}">
       ${await customerSelect(custId)}
       <p class="muted" id="bal"></p>
@@ -362,6 +366,7 @@
     const showBal = () => { const c = state.customers.find(x => x.id === $("#cust").value);
       $("#bal").textContent = !c ? "" : c.balanceStatus === "Needs verification" ? "Current balance: not confirmed (old records incomplete)" : "Current balance: " + money(c.balance); };
     $("#cust").onchange = showBal; showBal();
+    applyPrefill("payment", pf => { setVal("#amt", pf.amount); setVal("#pm", pf.method); showBal(); });
     $("#next").onclick = () => {
       const c = state.customers.find(x => x.id === $("#cust").value), a = Number($("#amt").value);
       if (!$("#d").value) return showErr("Please choose the date.");
@@ -378,13 +383,14 @@
     };
   }
   function renderExpense() {
-    view.innerHTML = `<h1>Business expense</h1><section class="card">
+    view.innerHTML = `<h1>Business expense</h1>${SPEAK_LINK}<section class="card">
       <label for="d">Date</label><input type="date" id="d" value="${today()}" max="${today()}">
       <label for="cat">Category</label><select id="cat"><option value="">Choose…</option>${state.me.expenseCategories.map(c => `<option>${esc(c)}</option>`).join("")}</select>
       <label for="amt">Amount spent (GMD)</label><input id="amt" type="number" inputmode="decimal" min="0" step="0.01">
       ${methodSelect("pm", "Paid with")}
       <label for="desc">Description</label><input id="desc" maxlength="300" placeholder="e.g. 2 bags of detergent">
       <div id="err"></div><button class="btn" id="next" style="width:100%;margin-top:12px">Continue</button></section>`;
+    applyPrefill("expense", pf => { setVal("#cat", pf.category); setVal("#amt", pf.amount); setVal("#pm", pf.method); setVal("#desc", pf.description); });
     $("#next").onclick = () => {
       const a = Number($("#amt").value);
       if (!$("#d").value) return showErr("Please choose the date.");
@@ -400,14 +406,95 @@
     };
   }
 
+  // ------------------------------------------------------------ voice entry (TEST)
+  // Speech -> text (free browser recognition) -> parsed values -> the NORMAL form, filled in.
+  // Mariama checks/corrects every field, then the normal "Please check" screen asks her to confirm.
+  const SPEAK_LINK = `<p><button class="btn secondary small" data-nav="voice">🎤 Speak instead</button></p>`;
+  const VOICE_LANGS = [["en-GB", "English (UK)"], ["en-NG", "English (Nigeria / West Africa)"], ["en-GH", "English (Ghana)"], ["en-US", "English (US)"]];
+  function setVal(sel, v) { const el = $(sel); if (el && v !== undefined && v !== null && v !== "") el.value = v; }
+  function applyPrefill(kind, fill) {
+    const pf = state.prefill; if (!pf || pf.kind !== kind) return;
+    state.prefill = null;
+    fill(pf);
+    const sugg = !pf.customerId && pf.suggestions && pf.suggestions.length && $("#cust")
+      ? `<p class="muted">Did you mean:</p><div class="chips">${pf.suggestions.map(x => `<button class="chip" data-pick="${esc(x.id)}">${esc(x.name)}</button>`).join("")}</div>` : "";
+    const newCust = kind !== "customer" && kind !== "expense" && !pf.customerId && pf.spokenName
+      ? `<p><button class="chip" id="vNew">+ New customer: ${esc(pf.spokenName)}</button></p>` : "";
+    const box = `<div class="voicebox"><b>Filled from your voice – please check every field.</b><br><span class="muted">You said: “${esc(pf.transcript)}”</span>
+      ${pf.warnings && pf.warnings.length ? `<ul>${pf.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}${sugg}${newCust}</div>`;
+    const card = view.querySelector("section.card"); card.insertAdjacentHTML("afterbegin", box);
+    card.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
+      $("#cust").value = b.dataset.pick; $("#cust").dispatchEvent(new Event("change"));
+      card.querySelectorAll("[data-pick]").forEach(x => x.classList.toggle("on", x === b));
+    });
+    const nb = $("#vNew");
+    if (nb) nb.onclick = () => { state.prefill = { kind: "customer", spokenName: pf.spokenName, transcript: pf.transcript, warnings: ["Check the spelling of the name."] }; route("newcustomer"); };
+  }
+  async function renderVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const lang = store.get("pl_voice_lang", "en-GB");
+    view.innerHTML = `<h1>Speak a transaction</h1><section class="card">
+      <p class="muted">Tap the microphone, then say for example:</p>
+      <ul class="examples"><li>“Awa brought clothes, eight hundred and fifty, paid three hundred cash”</li>
+        <li>“Jibril paid two hundred by Wave”</li><li>“Expense, detergent, eight hundred, cash”</li><li>“New customer Fatou Jallow”</li></ul>
+      <button class="mic" id="mic" aria-label="Start speaking"${SR ? "" : " disabled"}>🎤</button>
+      <p class="center" id="micState">${SR ? "Tap the microphone and speak" : "Voice is not available in this browser. Use Chrome on Android – or type the sentence below."}</p>
+      <label for="heard">What I heard (you can correct it)</label>
+      <textarea id="heard" rows="3" maxlength="300"></textarea>
+      <div id="err"></div>
+      <div class="row" style="margin-top:12px"><button class="btn secondary" data-nav="home">Cancel</button><button class="btn" id="use">Fill the form</button></div>
+      <p class="hint">Nothing is saved yet. Next you will see the form filled in, correct anything, and press Save.</p>
+      <p class="hint">Language: ${esc((VOICE_LANGS.find(l => l[0] === lang) || VOICE_LANGS[0])[1])} (change in More). Chrome turns your voice into text with its free built-in speech service; only the text is used.</p></section>`;
+    try { await loadCustomers(); } catch (e) { if (e.message === "signin") return; }
+    let alts = [], rec = null;
+    const st = $("#micState"), heard = $("#heard"), mic = $("#mic");
+    if (SR) mic.onclick = () => {
+      if (rec) { rec.stop(); return; }
+      rec = new SR(); rec.lang = lang; rec.interimResults = true; rec.maxAlternatives = 5; rec.continuous = false;
+      mic.classList.add("on"); st.textContent = "Listening… speak now"; heard.value = ""; alts = [];
+      rec.onresult = e => {
+        const res = e.results[e.results.length - 1];
+        heard.value = Array.from(e.results).map(x => x[0].transcript).join(" ");
+        if (res.isFinal) alts = Array.from(res).map(a => a.transcript);
+      };
+      rec.onerror = e => {
+        const m = { "not-allowed": "Microphone blocked. Tap the lock icon next to the address, allow the microphone, and try again.",
+          "service-not-allowed": "Microphone blocked. Allow the microphone for this site in Chrome settings.",
+          "no-speech": "I did not hear anything. Tap the microphone and speak a little louder.",
+          "network": "Voice needs internet. Check the connection, or type the sentence.", "audio-capture": "No microphone found." }[e.error];
+        st.textContent = m || "Voice stopped. Please try again or type.";
+      };
+      rec.onend = () => { rec = null; mic.classList.remove("on"); if (heard.value.trim()) st.textContent = "Check the text, then tap “Fill the form”."; };
+      try { rec.start(); } catch (e) { rec = null; mic.classList.remove("on"); st.textContent = "Could not start the microphone. Please try again."; }
+    };
+    $("#use").onclick = () => {
+      const text = heard.value.trim(); if (!text) return showErr("Say or type the transaction first.");
+      const r = (alts.length && alts[0].trim() === text) ? PLVoice.parseBest(alts, state.customers) : PLVoice.parse(text, state.customers);
+      const go = kind => {
+        r.kind = kind; state.prefill = r;
+        route(kind === "customer" ? "newcustomer" : kind === "expense" ? "expense" : kind + (r.customerId ? ":" + r.customerId : ""));
+      };
+      if (r.type) return go(r.type);
+      $("#err").innerHTML = `<p class="error">Is this a bill, a payment or an expense?</p><div class="chips">
+        <button class="chip" data-k="charge">Bill (clothes brought)</button><button class="chip" data-k="payment">Payment</button><button class="chip" data-k="expense">Expense</button></div>`;
+      view.querySelectorAll("[data-k]").forEach(b => b.onclick = () => {
+        const again = PLVoice.parse((b.dataset.k === "charge" ? "brought " : b.dataset.k === "payment" ? "paid " : "expense ") + text, state.customers);
+        Object.assign(r, again, { transcript: text }); go(b.dataset.k);
+      });
+    };
+  }
+
   // ------------------------------------------------------------ more
   function renderMore() {
     view.innerHTML = `<h1>More</h1>
       <section class="card"><h2>Account</h2><p>${esc(state.me.email)}<br><span class="muted">Role: ${esc(state.me.role)} · ${esc(ENV === "TEST" ? "TEST ledger (practice)" : "LIVE business ledger")}</span></p>
         <button class="btn secondary" id="out" style="width:100%">Sign out</button></section>
       <section class="card"><h2>Install on your phone</h2><p>In Chrome, tap the ⋮ menu, then <b>Add to Home screen</b> (or <b>Install app</b>).</p></section>
-      <section class="card"><h2>Coming next</h2><p class="muted">Reports, cash count, voice entry.</p><p class="muted">App version ${esc(CFG.appVersion)}</p></section>`;
+      <section class="card"><h2>Voice entry</h2><label for="vlang">Voice language</label><select id="vlang">${VOICE_LANGS.map(([k, l]) => `<option value="${k}" ${store.get("pl_voice_lang", "en-GB") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
+        <p class="hint">If names or amounts are often misunderstood, try another English option.</p></section>
+      <section class="card"><h2>Coming next</h2><p class="muted">Reports, cash count.</p><p class="muted">App version ${esc(CFG.appVersion)}</p></section>`;
     $("#out").onclick = signOut;
+    $("#vlang").onchange = e => { store.set("pl_voice_lang", e.target.value); toast("Voice language saved"); };
   }
 
   // ------------------------------------------------------------ start
