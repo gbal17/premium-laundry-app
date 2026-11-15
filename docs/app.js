@@ -148,6 +148,7 @@
     if (page === "more") { setTab("more"); return renderMore(); }
     renderHome();
   }
+  window.addEventListener("hashchange", () => { if (state.me) route(location.hash.slice(1) || "home"); });
   document.addEventListener("click", e => {
     const nav = e.target.closest("[data-nav]");
     if (nav) { e.preventDefault(); route(nav.dataset.nav); }
@@ -283,7 +284,7 @@
 
   // ------------------------------------------------------------ transaction forms
   async function customerSelect(selectedId) {
-    const list = state.customers.length ? state.customers : await loadCustomers();
+    const list = await loadCustomers();   // always fresh, so balances shown are current
     return `<label for="cust">Customer</label><select id="cust"><option value="">Choose customer…</option>${list.map(c => `<option value="${esc(c.id)}" ${c.id === selectedId ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>
       <div class="hint">Not in the list? <a href="#newcustomer" data-nav="newcustomer">Register new customer</a></div>`;
   }
