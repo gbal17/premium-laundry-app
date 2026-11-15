@@ -1,4 +1,4 @@
-/* Premium Laundry - PWA client (v0.5.0 TEST: reliable saving, duplicate warnings, corrections, balance checks)
+/* Premium Laundry - PWA client (v0.5.1 TEST: + app version check, date filters over the whole history)
  * - Two separate environments: TEST (practice ledger, /test/) and LIVE (official ledger, root).
  *   The environment shown comes from the SERVER (its LEDGER_MODE); if it does not match this
  *   app's configured environment, the app refuses to work.
@@ -86,7 +86,7 @@
   // ------------------------------------------------------------ API
   async function api(action, data, requestId) {
     if (!tokenValid()) { showSignIn("Your session has ended. Please sign in again."); throw new Error("signin"); }
-    const body = JSON.stringify({ action, data: data || {}, idToken: state.token, requestId: requestId || "" });
+    const body = JSON.stringify({ action, data: data || {}, idToken: state.token, requestId: requestId || "", clientVersion: CFG.appVersion });
     let json;
     const ctl = window.AbortController ? new AbortController() : null;
     const timer = ctl ? setTimeout(() => ctl.abort(), 60000) : null;
@@ -101,6 +101,7 @@
       const e = new Error(json.error || "Request failed");
       if (json.code === 422 || json.code === 400) e.user = true;      // nothing saved: the person must change something
       else { e.retry = true; e.interrupted = !!json.interrupted; }    // not finished: safe to resend the same request
+      if (json.code === 426 || json.updateRequired) e.update = true;   // this app is too old: keep any record on the phone, then update
       throw e;
     }
     return json;
@@ -130,6 +131,7 @@
     if (action === "recovery.finish") return "Finish an interrupted save";
     return action;
   }
+  const labelOf = x => x.label || describe(x.action, x.data);
   function updateQueueBanner() {
     const n = queue().length, a = attention().length, b = $("#queueBanner");
     if (!n && !a) { b.classList.add("hidden"); return; }
@@ -147,6 +149,7 @@
     } catch (e) {
       if (e.user) { qRemove(item.requestId); throw e; }               // not saved: shown on the screen
       if (e.message === "signin" || e.message === "forbidden") throw e; // kept: sent after signing in
+      if (e.update) setTimeout(updateApp, 2500);
       return { ok: true, queued: true, interrupted: !!e.interrupted };
     } finally { inflight.delete(item.requestId); updateQueueBanner(); }
   }
@@ -161,10 +164,10 @@
           const r = await api(item.action, item.data, item.requestId);
           qRemove(item.requestId);
           if (r.data && r.data.needsConfirmation) { aAdd(Object.assign({}, item, { reason: r.data.reason, existing: r.data.existing || null, matches: r.data.matches || null })); toast("A record waiting on this phone needs your decision.", true); }
-          else toast("Sent and saved: " + item.label);
+          else toast("Sent and saved: " + labelOf(item));
         } catch (e) {
           if (e.user) { qRemove(item.requestId); aAdd(Object.assign({}, item, { reason: "refused", error: e.message })); toast("A record could not be saved: " + e.message, true); }
-          else break;                          // still no connection: try again later
+          else { if (e.update) setTimeout(updateApp, 1500); break; }   // no connection (or app too old): try again later
         } finally { inflight.delete(item.requestId); }
       }
     } finally { state.sending = false; updateQueueBanner(); }
@@ -172,6 +175,18 @@
   setInterval(() => { if (queue().length && navigator.onLine !== false) flushQueue(); }, 30000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") flushQueue(); });
   window.addEventListener("online", flushQueue);
+
+  // The server says this app is too old: fetch the new version. Records waiting on the phone are kept
+  // (they are sent by the updated app with the same request IDs, so nothing is saved twice).
+  async function updateApp() {
+    let tries = 0; try { tries = Number(sessionStorage.getItem("pl_upd_try") || 0); sessionStorage.setItem("pl_upd_try", String(tries + 1)); } catch (e) { }
+    const waiting = queue().length + attention().length;
+    view.innerHTML = `<section class="card center"><h2>Updating the app…</h2><p>A newer version is needed.</p>${waiting ? `<p><b>${waiting} record(s) are kept safely on this phone</b> and will be sent after the update.</p>` : ""}
+      ${tries >= 2 ? `<p class="error">Please close the app completely (swipe it away) and open it again. If this message stays, call Giuseppe.</p><button class="btn" id="again">Try again</button>` : ""}</section>`;
+    if (tries >= 2) { $("#again").onclick = () => { try { sessionStorage.removeItem("pl_upd_try"); } catch (e) { } location.reload(); }; return; }
+    try { const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } catch (e) { }
+    setTimeout(() => location.reload(), 1500);
+  }
 
   // ------------------------------------------------------------ boot & navigation
   async function boot() {
@@ -182,6 +197,8 @@
     try {
       view.innerHTML = `<section class="card center"><p>Opening your records…</p></section>`;
       const r = await api("bootstrap");
+      if (r.data.outdated) return updateApp();
+      try { sessionStorage.removeItem("pl_upd_try"); } catch (e) { }
       if (r.data.mode !== ENV) {   // safety: app and ledger must be the same environment
         state.me = null; $("#tabbar").classList.add("hidden");
         view.innerHTML = `<section class="card"><h2>Stop – wrong ledger</h2><p class="error">This ${esc(ENV)} app is connected to a ${esc(r.data.mode)} ledger. Nothing can be saved. Please contact Giuseppe.</p></section>`;
@@ -193,6 +210,7 @@
       updateQueueBanner(); flushQueue();
       route(location.hash.slice(1) || "home");
     } catch (e) {
+      if (e.update) return updateApp();
       if (e.message !== "signin" && e.message !== "forbidden") view.innerHTML = `<section class="card"><p class="error">Could not connect. Check the internet and try again.</p><button class="btn" id="retry">Try again</button></section>`, $("#retry").onclick = boot;
     }
   }
@@ -230,9 +248,9 @@
     const t = today();
     if (p === "today") return [t, t, "Today"];
     if (p === "yesterday") { const y = addDays(t, -1); return [y, y, "Yesterday"]; }
-    if (p === "week") { const d = new Date(t + "T12:00:00Z"); const dow = (d.getUTCDay() + 6) % 7; return [addDays(t, -dow), t, "This week"]; }
-    if (p === "month") return [t.slice(0, 8) + "01", t, "This month"];
-    if (p === "custom" && state.custom) return [state.custom[0], state.custom[1], "Custom"];
+    if (p === "week") { const d = new Date(t + "T12:00:00Z"); const dow = (d.getUTCDay() + 6) % 7; return [addDays(t, -dow), t, "This Week (from Monday)"]; }
+    if (p === "month") return [t.slice(0, 8) + "01", t, "This Month"];
+    if (p === "custom" && state.custom) return [state.custom[0], state.custom[1], "Chosen dates"];
     return [t, t, "Today"];
   }
   const ACTIONS_HTML = `<div class="actions">
@@ -245,11 +263,12 @@
   async function renderHome() {
     const [from, to, label] = periodRange(state.period);
     view.innerHTML = `
-      <div class="periods">${[["today", "Today"], ["yesterday", "Yesterday"], ["week", "This week"], ["month", "This month"], ["custom", "Choose dates"]]
+      <div class="periods">${[["today", "Today"], ["yesterday", "Yesterday"], ["week", "This Week"], ["month", "This Month"], ["custom", "Choose Dates"]]
         .map(([k, l]) => `<button data-period="${k}" class="${state.period === k ? "active" : ""}">${l}</button>`).join("")}</div>
       <div id="customBox" class="card ${state.period === "custom" ? "" : "hidden"}">
         <div class="row"><div><label for="cf">From</label><input type="date" id="cf" value="${esc(state.custom ? state.custom[0] : from)}" max="${today()}"></div>
         <div><label for="ct">To</label><input type="date" id="ct" value="${esc(state.custom ? state.custom[1] : to)}" max="${today()}"></div></div>
+        <p class="hint">Any dates can be chosen – the whole history is available${state.firstDate ? " (first record: " + esc(niceDate(state.firstDate)) + ")" : ""}.</p>
         <button class="btn" id="applyCustom" style="margin-top:12px;width:100%">Show</button></div>
       <p class="muted">${esc(label)}: ${esc(from === to ? niceDate(from) : niceDate(from) + " – " + niceDate(to))}</p>
       <div id="dash"><div class="card center"><p>Loading figures…</p></div>${ACTIONS_HTML}</div>
@@ -262,6 +281,7 @@
     if (ac) ac.onclick = () => { const f = $("#cf").value, t = $("#ct").value; if (!f || !t || f > t) return toast("Please choose a valid date range.", true); state.custom = [f, t]; state.period = "custom"; renderHome(); };
     try {
       const d = (await api("dashboard", { from, to })).data;
+      if (d.firstDate) state.firstDate = d.firstDate;
       const methods = Object.keys(d.receivedByMethod || {}).map(k => esc(k) + " " + money(d.receivedByMethod[k])).join(" · ");
       const cats = Object.keys(d.expensesByCategory || {}).map(k => esc(k) + " " + money(d.expensesByCategory[k])).join(" · ");
       const w = d.warnings || {};
@@ -280,7 +300,7 @@
         ${ACTIONS_HTML}
         <section class="card">
           <h2>Customers who owe money</h2>
-          <p class="muted">Confirmed from complete records only.</p>
+          <p class="muted">All dates up to now (not only the period above). Confirmed from complete records only.</p>
           <div class="value" style="font-size:24px;font-weight:750">${money(d.confirmedOwingTotal)}</div>
           ${d.owing.length ? `<ul class="list">${d.owing.map(o => `<li><button data-nav="customer:${esc(o.id)}"><span>${esc(o.name)}</span><span class="amount">${money(o.balance)}</span></button></li>`).join("")}</ul>` : `<p class="muted">No confirmed unpaid balances.</p>`}
         </section>
@@ -708,12 +728,12 @@
   function renderPending() {
     const q = queue(), a = attention();
     view.innerHTML = `<h1>Records on this phone</h1>
-      ${a.length ? `<section class="card warnbox"><h2>Need your decision (${a.length})</h2>${a.map(x => `<div class="unm"><p><b>${esc(x.label)}</b><br><span class="muted">${esc(new Date(x.at).toLocaleString("en-GB"))}</span></p>
+      ${a.length ? `<section class="card warnbox"><h2>Need your decision (${a.length})</h2>${a.map(x => `<div class="unm"><p><b>${esc(labelOf(x))}</b><br><span class="muted">${esc(new Date(x.at).toLocaleString("en-GB"))}</span></p>
         ${x.reason === "possibleDuplicate" && x.existing ? `<p>Looks already saved: ${esc(recLabel(x.existing))}. Is this a different one?</p><div class="row"><button class="btn secondary small" data-drop="${esc(x.requestId)}">No – remove it</button><button class="btn small" data-again="${esc(x.requestId)}">Yes – save it</button></div>`
           : x.reason === "exact" || x.reason === "similar" ? `<p>A customer with a similar name already exists${x.matches ? ": " + esc(x.matches.map(m => m.name).join(", ")) : ""}. Is this a different person?</p><div class="row"><button class="btn secondary small" data-drop="${esc(x.requestId)}">No – remove it</button><button class="btn small" data-again="${esc(x.requestId)}">Yes – save it</button></div>`
           : `<p class="error">${esc(x.error || "Not saved.")}</p><p class="muted">It was NOT saved. Enter it again correctly, then remove this.</p><button class="btn secondary small" data-drop="${esc(x.requestId)}">Remove</button>`}</div>`).join("")}</section>` : ""}
       <section class="card"><h2>Waiting to be confirmed (${q.length})</h2>
-        ${q.length ? `<ul class="list">${q.map(x => `<li><span>${esc(x.label)}<br><span class="muted">${esc(new Date(x.at).toLocaleString("en-GB"))}</span></span></li>`).join("")}</ul>
+        ${q.length ? `<ul class="list">${q.map(x => `<li><span>${esc(labelOf(x))}<br><span class="muted">${esc(new Date(x.at).toLocaleString("en-GB"))}</span></span></li>`).join("")}</ul>
         <p class="muted">These are sent automatically when there is internet. Each is saved once, even if it was partly sent before.</p><button class="btn" id="sendNow" style="width:100%">Send now</button>` : `<p class="muted">Nothing waiting. Everything on this phone has been confirmed.</p>`}</section>`;
     const s = $("#sendNow"); if (s) s.onclick = async () => { s.disabled = true; s.textContent = "Sending…"; await flushQueue(); renderPending(); };
     view.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => {
@@ -724,7 +744,7 @@
       const x = attention().find(y => y.requestId === b.dataset.again); if (!x) return;
       b.disabled = true; aRemove(x.requestId);
       const data = Object.assign({}, x.data, x.action === "customers.create" ? { confirmed: true } : { confirmDuplicate: true });
-      try { const r = await write(x.action, data); toast(r.queued ? QUEUED_MSG : "Saved: " + x.label, !!r.queued); }
+      try { const r = await write(x.action, data); toast(r.queued ? QUEUED_MSG : "Saved: " + labelOf(x), !!r.queued); }
       catch (e) { if (e.user) { aAdd(Object.assign({}, x, { reason: "refused", error: e.message })); } }
       updateQueueBanner(); renderPending();
     });
