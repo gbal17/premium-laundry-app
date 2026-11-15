@@ -1,5 +1,4 @@
-// probe
-line2/* Premium Laundry - voice entry helper (TEST, v0.4.0)
+/* Premium Laundry - voice entry helper (TEST, v0.4.0)
  * Turns a spoken sentence into form values. It never saves anything: the app shows the
  * normal form, filled in, and Mariama checks it and confirms before saving.
  * Speech-to-text uses the browser's free built-in recognition (Chrome on Android).
