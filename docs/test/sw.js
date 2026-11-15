@@ -1,5 +1,5 @@
 // Service worker: caches only the app shell (no business data, no API responses).
-const CACHE = "pl-shell-test-v0.4.0";
+const CACHE = "pl-shell-test-v0.4.1";
 const SHELL = ["./", "index.html", "styles.css", "voice.js", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", e => {
