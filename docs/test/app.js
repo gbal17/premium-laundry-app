@@ -442,12 +442,21 @@
       <label for="heard">What I heard (you can correct it)</label>
       <textarea id="heard" rows="3" maxlength="300"></textarea>
       <div id="err"></div>
+      <p class="hint center" id="custState">Loading customers…</p>
       <div class="row" style="margin-top:12px"><button class="btn secondary" data-nav="home">Cancel</button><button class="btn" id="use">Fill the form</button></div>
       <p class="hint">Nothing is saved yet. Next you will see the form filled in, correct anything, and press Save.</p>
       <p class="hint">Language: ${esc((VOICE_LANGS.find(l => l[0] === lang) || VOICE_LANGS[0])[1])} (change in More). Chrome turns your voice into text with its free built-in speech service; only the text is used.</p></section>`;
-    try { await loadCustomers(); } catch (e) { if (e.message === "signin") return; }
-    let alts = [], rec = null;
-    const st = $("#micState"), heard = $("#heard"), mic = $("#mic");
+    // v0.4.1: the microphone works at once; the customer list loads in the background.
+    let alts = [], rec = null, cust = "loading";
+    const st = $("#micState"), heard = $("#heard"), mic = $("#mic"), use = $("#use"), cs = $("#custState");
+    const here = () => document.body.contains(use);
+    const loadList = () => {
+      cust = "loading"; cs.className = "hint center"; cs.textContent = "Loading customers…";
+      return loadCustomers().then(() => { cust = "ready"; if (here()) cs.textContent = ""; },
+        e => { if (e.message === "signin") { cust = "signin"; return; }
+          cust = "failed"; if (here()) { cs.className = "error"; cs.textContent = "Could not load the customer list. Check the internet – “Fill the form” will try again."; } });
+    };
+    let custLoad = loadList();
     if (SR) mic.onclick = () => {
       if (rec) { rec.stop(); return; }
       rec = new SR(); rec.lang = lang; rec.interimResults = true; rec.maxAlternatives = 5; rec.continuous = false;
@@ -467,8 +476,16 @@
       rec.onend = () => { rec = null; mic.classList.remove("on"); if (heard.value.trim()) st.textContent = "Check the text, then tap “Fill the form”."; };
       try { rec.start(); } catch (e) { rec = null; mic.classList.remove("on"); st.textContent = "Could not start the microphone. Please try again."; }
     };
-    $("#use").onclick = () => {
+    use.onclick = async () => {
       const text = heard.value.trim(); if (!text) return showErr("Say or type the transaction first.");
+      if (cust !== "ready") {
+        if (cust === "failed") custLoad = loadList();
+        use.disabled = true; use.textContent = "Loading customers…"; $("#err").innerHTML = "";
+        await custLoad;
+        if (!here()) return;
+        use.disabled = false; use.textContent = "Fill the form";
+        if (cust !== "ready") return;
+      }
       const r = (alts.length && alts[0].trim() === text) ? PLVoice.parseBest(alts, state.customers) : PLVoice.parse(text, state.customers);
       const go = kind => {
         r.kind = kind; state.prefill = r;
