@@ -88,3 +88,16 @@ body.env-test .mic { background: #a8321f; }
 .chip { border: 1px solid var(--brand); background: #fff; color: var(--brand); border-radius: 999px; padding: 8px 14px; font-size: 15px; font-weight: 600; }
 .chip.on { background: var(--brand); color: #fff; }
 textarea { width: 100%; padding: 12px; font-size: 17px; border: 1px solid #b9c7ca; border-radius: 10px; font-family: inherit; }
+
+/* v0.5.0: corrections, checks, records on this phone */
+.warnbox { background: var(--warn-bg); color: #4a3200; border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 15px; }
+section.card.warnbox { border-color: #f0d48a; }
+.btn.danger { background: #fff; color: var(--bad); border-color: var(--bad); }
+.btn.small { padding: 8px 12px; font-size: 15px; min-height: 40px; }
+.list li > button.voided .amount, .list li > button.voided span:first-child { text-decoration: line-through; color: var(--muted); }
+.list li > button.voided .tag { text-decoration: none; }
+.chip.on { background: var(--brand); color: #fff; }
+.checks { list-style: none; padding: 0; margin: 6px 0; } .checks li { padding: 4px 0; }
+.unm { border-top: 1px solid var(--line); padding: 8px 0; }
+#queueBanner { cursor: pointer; }
+.actions .btn.secondary { width: 100%; }
