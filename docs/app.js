@@ -1,4 +1,7 @@
-/* Premium Laundry - PWA client (Stage 2)
+/* Premium Laundry - PWA client (v0.3.0)
+ * - Two separate environments: TEST (practice ledger, /test/) and LIVE (official ledger, root).
+ *   The environment shown comes from the SERVER (its LEDGER_MODE); if it does not match this
+ *   app's configured environment, the app refuses to work.
  * - Sign in with Google (ID token kept in memory + sessionStorage only for this tab session).
  * - Every API call sends the token; the server verifies it with Google.
  * - Writes carry a one-time requestId so double taps / resends never duplicate.
@@ -10,6 +13,8 @@
   const CFG = window.PL_CONFIG;
   const $ = s => document.querySelector(s);
   const view = $("#view");
+  const ENV = CFG.env === "LIVE" ? "LIVE" : "TEST";
+  const ENV_TEXT = { TEST: "TEST – practice only. Fake data, not real business money.", LIVE: "LIVE – official business records" };
   const state = { token: null, tokenExp: 0, me: null, period: "today", custom: null, customers: [], sending: false };
 
   // ------------------------------------------------------------ utilities
@@ -30,6 +35,17 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "toast hidden", bad ? 6000 : 3500);
   }
 
+  // ------------------------------------------------------------ environment indicator
+  function paintEnv() {
+    document.body.classList.toggle("env-test", ENV === "TEST");
+    document.body.classList.toggle("env-live", ENV === "LIVE");
+    $("#envPill").textContent = ENV;
+    const b = $("#modeBanner");
+    b.textContent = CFG.apiUrl ? ENV_TEXT[ENV] : "LIVE app not switched on yet";
+    b.className = "banner " + (ENV === "TEST" ? "test" : CFG.apiUrl ? "live" : "warn");
+    document.title = (ENV === "TEST" ? "TEST – " : "") + "Premium Laundry";
+  }
+
   // ------------------------------------------------------------ sign-in
   function decodeExp(token) {
     try { return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).exp * 1000; } catch (e) { return 0; }
@@ -44,6 +60,7 @@
     $("#tabbar").classList.add("hidden"); $("#who").textContent = "";
     view.innerHTML = `<section class="card center">
       <h1>Premium Laundry &amp; Garment Care</h1>
+      <p class="envline ${ENV === "TEST" ? "test" : "live"}">${esc(ENV_TEXT[ENV])}</p>
       <p>Sign in with Mariama's Google account to see today's money and record transactions.</p>
       <div id="gsiButton"></div>
       ${message ? `<p class="error">${esc(message)}</p>` : ""}
@@ -76,7 +93,7 @@
   }
 
   // Offline queue for writes (kept only on this phone until sent).
-  const QKEY = "pl_queue_v1";
+  const QKEY = "pl_queue_v1_" + ENV;   // TEST and LIVE never share unsent records
   function queue() { return store.get(QKEY, []); }
   function updateQueueBanner() {
     const n = queue().length, b = $("#queueBanner");
@@ -121,11 +138,13 @@
     try {
       view.innerHTML = `<section class="card center"><p>Opening your records…</p></section>`;
       const r = await api("bootstrap");
+      if (r.data.mode !== ENV) {   // safety: app and ledger must be the same environment
+        state.me = null; $("#tabbar").classList.add("hidden");
+        view.innerHTML = `<section class="card"><h2>Stop – wrong ledger</h2><p class="error">This ${esc(ENV)} app is connected to a ${esc(r.data.mode)} ledger. Nothing can be saved. Please contact Giuseppe.</p></section>`;
+        return;
+      }
       state.me = r.data;
       $("#who").textContent = state.me.email + " · " + state.me.role;
-      const mb = $("#modeBanner");
-      if (state.me.mode === "TEST") { mb.textContent = "TEST LEDGER — fake data only, not real business records"; mb.className = "banner test"; }
-      else mb.className = "banner hidden";
       $("#tabbar").classList.remove("hidden");
       updateQueueBanner(); flushQueue();
       route(location.hash.slice(1) || "home");
@@ -291,7 +310,7 @@
   const methodSelect = (id, label) => `<label for="${id}">${label}</label><select id="${id}"><option value="">Choose…</option>${state.me.paymentMethods.map(m => `<option>${esc(m)}</option>`).join("")}</select>`;
   function confirmScreen(title, items, onSave) {
     const prev = view.innerHTML;
-    view.innerHTML = `<h1>Please check</h1><section class="card"><h2>${esc(title)}</h2><dl class="confirm">${items.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+    view.innerHTML = `<h1>Please check</h1><p class="envline ${ENV === "TEST" ? "test" : "live"}">Saving to: ${ENV === "TEST" ? "TEST ledger (practice, not real money)" : "LIVE business ledger"}</p><section class="card"><h2>${esc(title)}</h2><dl class="confirm">${items.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
       <div id="err"></div><div class="row"><button class="btn secondary" id="back">Change</button><button class="btn" id="ok">Save</button></div></section>`;
     $("#back").onclick = () => { view.innerHTML = prev; };
     $("#ok").onclick = async () => {
@@ -384,7 +403,7 @@
   // ------------------------------------------------------------ more
   function renderMore() {
     view.innerHTML = `<h1>More</h1>
-      <section class="card"><h2>Account</h2><p>${esc(state.me.email)}<br><span class="muted">Role: ${esc(state.me.role)} · ${esc(state.me.mode === "TEST" ? "TEST ledger" : "Business ledger")}</span></p>
+      <section class="card"><h2>Account</h2><p>${esc(state.me.email)}<br><span class="muted">Role: ${esc(state.me.role)} · ${esc(ENV === "TEST" ? "TEST ledger (practice)" : "LIVE business ledger")}</span></p>
         <button class="btn secondary" id="out" style="width:100%">Sign out</button></section>
       <section class="card"><h2>Install on your phone</h2><p>In Chrome, tap the ⋮ menu, then <b>Add to Home screen</b> (or <b>Install app</b>).</p></section>
       <section class="card"><h2>Coming next</h2><p class="muted">Reports, cash count, voice entry.</p><p class="muted">App version ${esc(CFG.appVersion)}</p></section>`;
@@ -393,5 +412,10 @@
 
   // ------------------------------------------------------------ start
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { });
-  window.addEventListener("load", boot);
+  paintEnv();
+  if (!CFG.apiUrl) {
+    view.innerHTML = `<section class="card center"><h1>Premium Laundry &amp; Garment Care</h1>
+      <p>The LIVE business app is <b>not switched on yet</b>.</p>
+      <p class="muted">It will be activated after final checks. For practice, use the TEST app link Giuseppe sent you.</p></section>`;
+  } else window.addEventListener("load", boot);
 })();
