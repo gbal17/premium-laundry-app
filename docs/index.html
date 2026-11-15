@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14505c">
+  <meta name="description" content="Premium Laundry & Garment Care - daily money and customer records">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://accounts.google.com/gsi/; img-src 'self' data: https://*.googleusercontent.com">
+  <meta name="referrer" content="no-referrer">
+  <title>Premium Laundry</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Premium Laundry</div>
+    <div class="who" id="who"></div>
+  </header>
+  <div id="modeBanner" class="banner hidden"></div>
+  <div id="queueBanner" class="banner warn hidden"></div>
+  <main id="view" aria-live="polite">
+    <section class="card center">
+      <h1>Premium Laundry &amp; Garment Care</h1>
+      <p>Loading…</p>
+    </section>
+  </main>
+  <nav class="tabbar hidden" id="tabbar">
+    <button data-nav="home">Today</button>
+    <button data-nav="customers">Customers</button>
+    <button data-nav="more">More</button>
+  </nav>
+  <div id="toast" class="toast hidden" role="status"></div>
+</body>
+</html>
