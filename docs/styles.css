@@ -71,3 +71,33 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #9cc8d1; border-c
 .toast.bad { background: var(--bad); }
 .search { margin-bottom: 8px; }
 #gsiButton { display: flex; justify-content: center; margin: 18px 0 6px; min-height: 44px; }
+
+/* voice entry (TEST v0.4.0) */
+.big.voice { background: #0f6e8c; }
+.btn.small { padding: 8px 12px; min-height: 40px; font-size: 15px; }
+.mic { display: block; margin: 16px auto 6px; width: 96px; height: 96px; border-radius: 50%; border: 0; font-size: 44px;
+  background: var(--brand); color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+body.env-test .mic { background: #a8321f; }
+.mic.on { background: #c0392b; animation: pulse 1.2s infinite; }
+.mic:disabled { opacity: .4; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(192,57,43,.5); } 70% { box-shadow: 0 0 0 18px rgba(192,57,43,0); } 100% { box-shadow: 0 0 0 0 rgba(192,57,43,0); } }
+.examples { margin: 6px 0 4px 18px; padding: 0; color: var(--muted); font-size: 15px; }
+.voicebox { background: var(--info-bg); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 15px; }
+.voicebox ul { margin: 6px 0 0 18px; padding: 0; color: var(--warn); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.chip { border: 1px solid var(--brand); background: #fff; color: var(--brand); border-radius: 999px; padding: 8px 14px; font-size: 15px; font-weight: 600; }
+.chip.on { background: var(--brand); color: #fff; }
+textarea { width: 100%; padding: 12px; font-size: 17px; border: 1px solid #b9c7ca; border-radius: 10px; font-family: inherit; }
+
+/* v0.5.0: corrections, checks, records on this phone */
+.warnbox { background: var(--warn-bg); color: #4a3200; border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 15px; }
+section.card.warnbox { border-color: #f0d48a; }
+.btn.danger { background: #fff; color: var(--bad); border-color: var(--bad); }
+.btn.small { padding: 8px 12px; font-size: 15px; min-height: 40px; }
+.list li > button.voided .amount, .list li > button.voided span:first-child { text-decoration: line-through; color: var(--muted); }
+.list li > button.voided .tag { text-decoration: none; }
+.chip.on { background: var(--brand); color: #fff; }
+.checks { list-style: none; padding: 0; margin: 6px 0; } .checks li { padding: 4px 0; }
+.unm { border-top: 1px solid var(--line); padding: 8px 0; }
+#queueBanner { cursor: pointer; }
+.actions .btn.secondary { width: 100%; }
